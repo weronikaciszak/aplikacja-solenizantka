@@ -51,10 +51,10 @@ def film():
     return render_template_string(HTML_TEMPLATE, active_tab="film")
 
 @app.route("/zdjecie")
-def get_zdjecie(): return send_from_directory('.', 'solenizantka.png')
+def get_zdjecie(): return send_from_directory('.', 'solenizantka.png.png')
 
 @app.route("/wideo")
-def get_wideo(): return send_from_directory('.', 'hailuo_1786178926.mp4')
+def get_wideo(): return send_from_directory('.', 'hailuo_1786178926.mp4..mp4')
 
 @app.route("/uploads/<filename>")
 def uploaded_file(filename): return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
