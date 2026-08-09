@@ -23,7 +23,6 @@ def load_zyczenia():
     response = requests.get(GOOGLE_SCRIPT_URL, timeout=10)
     dane = response.json()
     zyczenia = []
-    # Zakładamy, że wiersz to [tekst, img, id/akcja] lub po prostu [tekst, img]
     for idx, row in enumerate(dane[1:], start=1):
       if row and len(row) > 0 and str(row[0]).strip() != "":
         text = str(row[0]).strip()
@@ -48,7 +47,6 @@ def home():
 @app.route("/ksiega", methods=["GET", "POST"])
 def ksiega():
   if request.method == "POST":
-    # Obsługa usuwania wpisu
     row_to_delete = request.form.get("usun_row")
     if row_to_delete:
       try:
@@ -59,7 +57,6 @@ def ksiega():
         print("Błąd usuwania:", e)
       return redirect("/ksiega")
 
-    # Obsługa dodawania nowego wpisu
     text = request.form.get("tekst")
     file = request.files.get("zdjecie")
 
@@ -78,7 +75,8 @@ def ksiega():
         payload["mimeType"] = file.content_type
 
     try:
-      requests.post(GOOGLE_SCRIPT_URL, json=payload, timeout=15)
+      r = requests.post(GOOGLE_SCRIPT_URL, json=payload, timeout=15)
+      print("ODPOWIEDŹ Z GOOGLE APPS SCRIPT:", r.text)
     except Exception as e:
       print("Błąd zapisu:", e)
 
