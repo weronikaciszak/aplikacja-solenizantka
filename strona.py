@@ -1,78 +1,92 @@
 import os
-from flask import Flask, redirect, render_template_string, request, send_from_directory
+import requests
+from flask import (
+    Flask,
+    redirect,
+    render_template_string,
+    request,
+    send_from_directory,
+)
 from werkzeug.utils import secure_filename
-import gspread
-from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-CREDS_FILE = "klucz.json"
-ID_ARKUSZA = "17nNSTdy_R6p2rwsJ-vEKQ5RF1L2OOSANnoi8XflH5KQ"
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw24VDFhBMITCva5NiO9gO6AetZhJAVgtybTHi2KZ9dJJV5zMb48tMlyGDIytJxQ0H8/exec"
+
 
 def load_zyczenia():
+  try:
+    response = requests.get(GOOGLE_SCRIPT_URL, timeout=10)
+    dane = response.json()
     zyczenia = []
-    if os.path.exists(CREDS_FILE):
-        try:
-            creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
-            client = gspread.authorize(creds)
-            sheet = client.open_by_key(ID_ARKUSZA).worksheet("Arkusz1")
-            records = sheet.get_all_values()
-            
-            for row in records[1:]:
-                if row and len(row) > 0 and str(row[0]).strip() != "":
-                    text = str(row[0]).strip()
-                    img = str(row[1]).strip() if len(row) > 1 and str(row[1]).strip() != "" else None
-                    zyczenia.append({"text": text, "img": img})
-        except Exception as e:
-            print("Błąd pobierania z arkusza:", e)
-            
+    for row in dane[1:]:
+      if row and len(row) > 0 and str(row[0]).strip() != "":
+        text = str(row[0]).strip()
+        img = (
+            str(row[1]).strip()
+            if len(row) > 1 and str(row[1]).strip() != ""
+            else None
+        )
+        zyczenia.append({"text": text, "img": img})
     wynik = []
     for idx, z in enumerate(reversed(zyczenia)):
-        wynik.append({"id": idx, "text": z["text"], "img": z["img"]})
+      wynik.append({"id": idx, "text": z["text"], "img": z["img"]})
     return wynik
+  except Exception as e:
+    print("Błąd pobierania:", e)
+    return []
+
 
 @app.route("/")
 def home():
-    return render_template_string(HTML_TEMPLATE, active_tab="home")
+  return render_template_string(HTML_TEMPLATE, active_tab="home")
+
 
 @app.route("/ksiega", methods=["GET", "POST"])
 def ksiega():
-    if request.method == "POST":
-        text = request.form.get("tekst")
-        file = request.files.get("zdjecie")
-        filename = ""
-        if file and file.filename != "":
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        
-        if os.path.exists(CREDS_FILE):
-            try:
-                creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
-                client = gspread.authorize(creds)
-                sheet = client.open_by_key(ID_ARKUSZA).worksheet("Arkusz1")
-                sheet.append_row([text, filename])
-            except Exception as e:
-                print("Błąd zapisu do arkusza:", e)
-            
-        return redirect("/ksiega")
-    return render_template_string(HTML_TEMPLATE, active_tab="ksiega", zyczenia=load_zyczenia())
+  if request.method == "POST":
+    text = request.form.get("tekst")
+    file = request.files.get("zdjecie")
+    filename = ""
+    if file and file.filename != "":
+      filename = secure_filename(file.filename)
+      file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+
+    try:
+      requests.post(
+          GOOGLE_SCRIPT_URL, json={"tekst": text, "zdjecie": filename}
+      )
+    except Exception as e:
+      print("Błąd zapisu:", e)
+
+    return redirect("/ksiega")
+  return render_template_string(
+      HTML_TEMPLATE, active_tab="ksiega", zyczenia=load_zyczenia()
+  )
+
 
 @app.route("/film")
 def film():
-    return render_template_string(HTML_TEMPLATE, active_tab="film")
+  return render_template_string(HTML_TEMPLATE, active_tab="film")
+
 
 @app.route("/zdjecie")
-def get_zdjecie(): return send_from_directory('.', 'solenizantka.png.png')
+def get_zdjecie():
+  return send_from_directory(".", "solenizantka.png.png")
+
 
 @app.route("/wideo")
-def get_wideo(): return send_from_directory('.', 'hailuo_1786178926.mp4..mp4')
+def get_wideo():
+  return send_from_directory(".", "hailuo_1786178926.mp4..mp4")
+
 
 @app.route("/uploads/<filename>")
-def uploaded_file(filename): return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+def uploaded_file(filename):
+  return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
 
 HTML_TEMPLATE = """
 <!doctype html>
@@ -127,4 +141,4 @@ HTML_TEMPLATE = """
 """
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+  app.run(host="0.0.0.0", port=5000)
