@@ -55,14 +55,20 @@ def ksiega():
 
     payload = {"tekst": text, "zdjecie_base64": "", "nazwa": "", "mimeType": ""}
     if file and file.filename != "":
-      payload["zdjecie_base64"] = base64.b64encode(file.read()).decode("utf-8")
-      payload["nazwa"] = secure_filename(file.filename)
-      payload["mimeType"] = file.content_type
+      file_bytes = file.read()
+      # Sprawdzenie czy plik nie jest za duży (np. powyżej 4 MB)
+      if len(file_bytes) < 4 * 1024 * 1024:
+        payload["zdjecie_base64"] = base64.b64encode(file_bytes).decode("utf-8")
+        payload["nazwa"] = secure_filename(file.filename)
+        payload["mimeType"] = file.content_type
+      else:
+        print("Plik jest za duży!")
 
     try:
-      requests.post(GOOGLE_SCRIPT_URL, json=payload)
+      r = requests.post(GOOGLE_SCRIPT_URL, json=payload, timeout=15)
+      print("Odpowiedź Google Script:", r.text)
     except Exception as e:
-      print("Błąd zapisu:", e)
+      print("Błąd zapisu do Google:", e)
 
     return redirect("/ksiega")
   return render_template_string(
@@ -121,8 +127,9 @@ HTML_TEMPLATE = """
         {% elif active_tab == 'ksiega' %}
             <h1>Księga Życzeń</h1>
             <form method="POST" enctype="multipart/form-data">
-                <textarea name="tekst" required></textarea><br>
-                <input type="file" name="zdjecie" accept="image/*"><br>
+                <textarea name="tekst" required placeholder="Wpisz swoje życzenia..."></textarea><br>
+                <label>Dodaj zdjęcie (opcjonalnie):</label><br>
+                <input type="file" name="zdjecie" accept="image/*" style="margin: 10px 0;"><br>
                 <button type="submit">Zapisz życzenia</button>
             </form>
             <h2>Wpisy gości:</h2>
@@ -130,10 +137,12 @@ HTML_TEMPLATE = """
                 <div class="wpis">
                     <p style="white-space: pre-wrap;">{{ z.text }}</p>
                     {% if z.img and z.img != "None" and z.img != "" %}
-                        {% if ".png" in z.img or ".jpg" in z.img or ".jpeg" in z.img %}
-                            <img src="/uploads/{{ z.img }}" style="max-width: 200px; display: block; margin-top: 10px; border-radius: 5px;">
+                        {# Jeśli w kolumnie B jest ID z Dysku Google (nie zawiera rozszerzenia pliku) #}
+                        {% if "." not in z.img %}
+                            <img src="https://lh3.googleusercontent.com/d/{{ z.img }}" style="max-width: 250px; display: block; margin-top: 10px; border-radius: 5px;">
                         {% else %}
-                            <img src="https://lh3.googleusercontent.com/d/{{ z.img }}" style="max-width: 200px; display: block; margin-top: 10px; border-radius: 5px;">
+                            <!-- Stary wpis ze starym plikiem -->
+                            <p style="font-size: 12px; color: gray;">[Zdjęcie niedostępne - stary format]</p>
                         {% endif %}
                     {% endif %}
                 </div>
