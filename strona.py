@@ -7,25 +7,47 @@ app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+FILENAME = "zyczenia.txt"
 
+# Wklej tutaj swój adres URL z Apps Script (z końcówką /exec)
 GOOGLE_SCRIPT_URL = "TUTAJ_WKLEJ_SWOJ_ADRES_URL_Z_EXEC"
 
 def load_zyczenia():
-    zyczenia = []
+    zyczenia_zbior = []
+    
+    # 1. Pobieranie z lokalnego pliku tekstowego
+    if os.path.exists(FILENAME):
+        try:
+            with open(FILENAME, "r", encoding="utf-8") as f:
+                for line in f:
+                    parts = line.strip().split("|||")
+                    if parts and parts[0]:
+                        text = parts[0]
+                        img = parts[1] if len(parts) > 1 and parts[1] != "" else None
+                        zyczenia_zbior.append({"text": text, "img": img})
+        except Exception as e:
+            print("Błąd odczytu pliku:", e)
+            
+    # 2. Pobieranie z Arkusza Google przez link
     try:
         response = requests.get(GOOGLE_SCRIPT_URL, timeout=10)
         if response.status_code == 200:
             dane = response.json()
-            # Przechodzimy przez każdy wiersz pomijając nagłówek (wiersz 0)
-            for row in dane[1:]:
+            for row in dane[1:]:  # Pomijamy nagłówek
                 if row and len(row) > 0 and str(row[0]).strip() != "":
                     text = str(row[0]).strip()
-                    # Sprawdzamy czy w kolumnie B jest zdjęcie, o ile ta kolumna istnieje w wierszu
                     img = str(row[1]).strip() if len(row) > 1 and str(row[1]).strip() != "" else None
-                    zyczenia.append({"text": text, "img": img})
+                    wpis = {"text": text, "img": img}
+                    if wpis not in zyczenia_zbior:
+                        zyczenia_zbior.append(wpis)
     except Exception as e:
-        print("Błąd pobierania:", e)
-    return list(reversed(zyczenia))
+        print("Błąd pobierania z arkusza:", e)
+            
+    # Odwracamy, żeby najnowsze były na górze
+    wynik = []
+    for idx, z in enumerate(reversed(zyczenia_zbior)):
+        wynik.append({"id": idx, "text": z["text"], "img": z["img"]})
+    return wynik
 
 @app.route("/")
 def home():
@@ -41,10 +63,15 @@ def ksiega():
             filename = secure_filename(file.filename)
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         
+        # Zapis lokalny
+        with open(FILENAME, "a", encoding="utf-8") as f:
+            f.write(f"{text}|||{filename}\n")
+            
+        # Zapis do Arkusza Google przez link
         try:
             requests.post(GOOGLE_SCRIPT_URL, json={"tekst": text, "zdjecie": filename}, timeout=10)
         except Exception as e:
-            print("Błąd zapisu:", e)
+            print("Błąd zapisu do arkusza:", e)
             
         return redirect("/ksiega")
     return render_template_string(HTML_TEMPLATE, active_tab="ksiega", zyczenia=load_zyczenia())
