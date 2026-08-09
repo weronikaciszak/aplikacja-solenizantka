@@ -1,51 +1,37 @@
 import os
-import requests
 from flask import Flask, redirect, render_template_string, request, send_from_directory
 from werkzeug.utils import secure_filename
+import gspread
+from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-FILENAME = "zyczenia.txt"
 
-# Wklej tutaj swój adres URL z Apps Script (z końcówką /exec)
-GOOGLE_SCRIPT_URL = "TUTAJ_WKLEJ_SWOJ_ADRES_URL_Z_EXEC"
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+CREDS_FILE = "klucz.json"
+ID_ARKUSZA = "17nNSTdy_R6p2rwsJ-vEKQ5RF1L2OOSANnoi8XflH5KQ"
 
 def load_zyczenia():
-    zyczenia_zbior = []
-    
-    # 1. Pobieranie z lokalnego pliku tekstowego
-    if os.path.exists(FILENAME):
+    zyczenia = []
+    if os.path.exists(CREDS_FILE):
         try:
-            with open(FILENAME, "r", encoding="utf-8") as f:
-                for line in f:
-                    parts = line.strip().split("|||")
-                    if parts and parts[0]:
-                        text = parts[0]
-                        img = parts[1] if len(parts) > 1 and parts[1] != "" else None
-                        zyczenia_zbior.append({"text": text, "img": img})
-        except Exception as e:
-            print("Błąd odczytu pliku:", e)
+            creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
+            client = gspread.authorize(creds)
+            sheet = client.open_by_key(ID_ARKUSZA).worksheet("Arkusz1")
+            records = sheet.get_all_values()
             
-    # 2. Pobieranie z Arkusza Google przez link
-    try:
-        response = requests.get(GOOGLE_SCRIPT_URL, timeout=10)
-        if response.status_code == 200:
-            dane = response.json()
-            for row in dane[1:]:  # Pomijamy nagłówek
+            for row in records[1:]:
                 if row and len(row) > 0 and str(row[0]).strip() != "":
                     text = str(row[0]).strip()
                     img = str(row[1]).strip() if len(row) > 1 and str(row[1]).strip() != "" else None
-                    wpis = {"text": text, "img": img}
-                    if wpis not in zyczenia_zbior:
-                        zyczenia_zbior.append(wpis)
-    except Exception as e:
-        print("Błąd pobierania z arkusza:", e)
+                    zyczenia.append({"text": text, "img": img})
+        except Exception as e:
+            print("Błąd pobierania z arkusza:", e)
             
-    # Odwracamy, żeby najnowsze były na górze
     wynik = []
-    for idx, z in enumerate(reversed(zyczenia_zbior)):
+    for idx, z in enumerate(reversed(zyczenia)):
         wynik.append({"id": idx, "text": z["text"], "img": z["img"]})
     return wynik
 
@@ -63,15 +49,14 @@ def ksiega():
             filename = secure_filename(file.filename)
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         
-        # Zapis lokalny
-        with open(FILENAME, "a", encoding="utf-8") as f:
-            f.write(f"{text}|||{filename}\n")
-            
-        # Zapis do Arkusza Google przez link
-        try:
-            requests.post(GOOGLE_SCRIPT_URL, json={"tekst": text, "zdjecie": filename}, timeout=10)
-        except Exception as e:
-            print("Błąd zapisu do arkusza:", e)
+        if os.path.exists(CREDS_FILE):
+            try:
+                creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
+                client = gspread.authorize(creds)
+                sheet = client.open_by_key(ID_ARKUSZA).worksheet("Arkusz1")
+                sheet.append_row([text, filename])
+            except Exception as e:
+                print("Błąd zapisu do arkusza:", e)
             
         return redirect("/ksiega")
     return render_template_string(HTML_TEMPLATE, active_tab="ksiega", zyczenia=load_zyczenia())
