@@ -75,8 +75,7 @@ def ksiega():
         payload["mimeType"] = file.content_type
 
     try:
-      r = requests.post(GOOGLE_SCRIPT_URL, json=payload, timeout=15)
-      print("ODPOWIEDŹ Z GOOGLE APPS SCRIPT:", r.text)
+      requests.post(GOOGLE_SCRIPT_URL, json=payload, timeout=15)
     except Exception as e:
       print("Błąd zapisu:", e)
 
