@@ -30,7 +30,15 @@ def load_zyczenia():
             if len(row) > 1 and str(row[1]).strip() != ""
             else None
         )
+
+        # Sprawdzamy czy plik fizycznie istnieje na serwerze
+        if img and img != "None":
+          file_path = os.path.join(app.config["UPLOAD_FOLDER"], img)
+          if not os.path.exists(file_path):
+            img = None
+
         zyczenia.append({"text": text, "img": img})
+
     wynik = []
     for idx, z in enumerate(reversed(zyczenia)):
       wynik.append({"id": idx, "text": z["text"], "img": z["img"]})
