@@ -2,14 +2,11 @@ import os
 import requests
 from flask import Flask, redirect, render_template_string, request, send_from_directory
 from werkzeug.utils import secure_filename
-import subprocess
-import threading
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-FILENAME = "zyczenia.txt"
 
 GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL")
 
@@ -21,15 +18,23 @@ def zapisz_zyczenie(tekst, zdjecie):
             print("Błąd wysyłania do arkusza:", e)
 
 def load_zyczenia():
-    if not os.path.exists(FILENAME): return []
-    with open(FILENAME, "r", encoding="utf-8") as f: lines = f.readlines()
-    zyczenia = []
-    for idx, line in enumerate(lines):
-        parts = line.strip().split("|||")
-        text = parts[0]
-        img = parts[1] if len(parts) > 1 and parts[1] != "" else None
-        zyczenia.append({"id": idx, "text": text, "img": img})
-    return zyczenia
+    if not GOOGLE_SCRIPT_URL:
+        return []
+    try:
+        # Pobieramy dane z naszego skryptu Google (dodamy funkcję GET w skrypcie)
+        response = requests.get(GOOGLE_SCRIPT_URL)
+        if response.status_code == 200:
+            dane = response.json()
+            zyczenia = []
+            for idx, row in enumerate(dane):
+                # row to np. [tekst, zdjecie]
+                text = row[0] if len(row) > 0 else ""
+                img = row[1] if len(row) > 1 and row[1] != "" else None
+                zyczenia.append({"id": idx, "text": text, "img": img})
+            return list(reversed(zyczenia)) # Najnowsze na górze
+    except Exception as e:
+        print("Błąd pobierania z arkusza:", e)
+    return []
 
 @app.route("/")
 def home():
@@ -45,21 +50,9 @@ def ksiega():
             filename = secure_filename(file.filename)
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         
-        with open(FILENAME, "a", encoding="utf-8") as f: 
-            f.write(f"{text}|||{filename or ''}\n")
-        
         zapisz_zyczenie(text, filename or "")
         return redirect("/ksiega")
     return render_template_string(HTML_TEMPLATE, active_tab="ksiega", zyczenia=load_zyczenia())
-
-@app.route("/usun/<int:index>")
-def usun_wpis(index):
-    if os.path.exists(FILENAME):
-        with open(FILENAME, "r", encoding="utf-8") as f: lines = f.readlines()
-        if 0 <= index < len(lines):
-            del lines[index]
-            with open(FILENAME, "w", encoding="utf-8") as f: f.writelines(lines)
-    return redirect("/ksiega")
 
 @app.route("/film")
 def film():
@@ -91,8 +84,6 @@ HTML_TEMPLATE = """
         button { background: #0056b3; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         button:hover { background: #004085; }
         .wpis { background: #f4f8ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #0056b3; }
-        .usun-btn { color: #dc3545; font-size: 13px; text-decoration: none; font-weight: bold; display: inline-block; margin-top: 5px; }
-        .usun-btn:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -124,7 +115,6 @@ HTML_TEMPLATE = """
                         {% if z.img %}
                             <img src="/uploads/{{ z.img }}" style="max-width: 200px; border-radius: 5px; display: block; margin-bottom: 10px;">
                         {% endif %}
-                        <a href="/usun/{{ z.id }}" class="usun-btn">[Usuń wpis]</a>
                     </div>
                 {% endfor %}
             {% else %}
@@ -144,4 +134,4 @@ HTML_TEMPLATE = """
 """
 
 if __name__ == "__main__":
-   app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000)
