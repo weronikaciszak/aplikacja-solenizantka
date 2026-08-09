@@ -11,12 +11,7 @@ FILENAME = "zyczenia.txt"
 
 GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL")
 
-def zapisz_do_pliku_i_arkusza(tekst, zdjecie):
-    # 1. Zapisujemy lokalnie do pliku, żeby strona od razu to widziała
-    with open(FILENAME, "a", encoding="utf-8") as f:
-        f.write(f"{tekst}|||{zdjecie or ''}\n")
-    
-    # 2. Wysyłamy do Arkusza Google, żeby tam też zostało
+def zapisz_zyczenie(tekst, zdjecie):
     if GOOGLE_SCRIPT_URL:
         try:
             requests.post(GOOGLE_SCRIPT_URL, json={"tekst": tekst, "zdjecie": zdjecie or ""})
@@ -34,7 +29,7 @@ def load_zyczenia():
         text = parts[0] if len(parts) > 0 else ""
         img = parts[1] if len(parts) > 1 and parts[1] != "" else None
         zyczenia.append({"id": idx, "text": text, "img": img})
-    return list(reversed(zyczenia)) # Najnowsze na górze
+    return list(reversed(zyczenia))
 
 @app.route("/")
 def home():
@@ -50,7 +45,10 @@ def ksiega():
             filename = secure_filename(file.filename)
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         
-        zapisz_do_pliku_i_arkusza(text, filename)
+        with open(FILENAME, "a", encoding="utf-8") as f:
+            f.write(f"{text}|||{filename or ''}\n")
+        
+        zapisz_zyczenie(text, filename or "")
         return redirect("/ksiega")
     return render_template_string(HTML_TEMPLATE, active_tab="ksiega", zyczenia=load_zyczenia())
 
