@@ -1,13 +1,24 @@
-
+import os
+import requests
 from flask import Flask, redirect, render_template_string, request, send_from_directory
 from werkzeug.utils import secure_filename
-import os
+import subprocess
+import threading
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 FILENAME = "zyczenia.txt"
+
+GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL")
+
+def zapisz_zyczenie(tekst, zdjecie):
+    if GOOGLE_SCRIPT_URL:
+        try:
+            requests.post(GOOGLE_SCRIPT_URL, json={"tekst": tekst, "zdjecie": zdjecie})
+        except Exception as e:
+            print("Błąd wysyłania do arkusza:", e)
 
 def load_zyczenia():
     if not os.path.exists(FILENAME): return []
@@ -33,7 +44,11 @@ def ksiega():
         if file and file.filename != "":
             filename = secure_filename(file.filename)
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        with open(FILENAME, "a", encoding="utf-8") as f: f.write(f"{text}|||{filename or ''}\n")
+        
+        with open(FILENAME, "a", encoding="utf-8") as f: 
+            f.write(f"{text}|||{filename or ''}\n")
+        
+        zapisz_zyczenie(text, filename or "")
         return redirect("/ksiega")
     return render_template_string(HTML_TEMPLATE, active_tab="ksiega", zyczenia=load_zyczenia())
 
@@ -127,22 +142,6 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
-import subprocess
-import threading
-
-def start_tunnel():
-    # Uruchamia darmowy tunel przez localhost.run bez instalowania czegokolwiek
-    url_command = "ssh -o StrictHostKeyChecking=no -R 80:127.0.0.1:5000 localhost.run"
-    process = subprocess.Popen(url_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    for line in process.stdout:
-        if "tun.live" in line or "lhr.life" in line or "https://" in line:
-            print("Twój publiczny link:", line.strip())
-
-# Uruchamiamy tunel w tle, żeby nie blokował strony
-threading.Thread(target=start_tunnel, daemon=True).start()
-
-
-
 
 if __name__ == "__main__":
    app.run(host='0.0.0.0', port=5000)
