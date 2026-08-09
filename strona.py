@@ -1,4 +1,3 @@
-import base64
 import os
 import requests
 from flask import (
@@ -8,14 +7,13 @@ from flask import (
     request,
     send_from_directory,
 )
-from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw24VDFhBMITCva5NiO9gO6AetZhJAVgtybTHi2KZ9dJJV5zMb48tMlyGDIytJxQ0H8/exec"
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzBFffCPUl2Lc14mL7Ukeob1iD6h8PC6qVBGK65OSmA7DJRLBLdS90jYqnp18Oec6M1/exec"
 
 
 def load_zyczenia():
@@ -26,13 +24,7 @@ def load_zyczenia():
     for idx, row in enumerate(dane[1:], start=1):
       if row and len(row) > 0 and str(row[0]).strip() != "":
         text = str(row[0]).strip()
-        img = (
-            str(row[1]).strip()
-            if len(row) > 1 and str(row[1]).strip() != ""
-            else None
-        )
-        zyczenia.append({"row_index": idx, "text": text, "img": img})
-
+        zyczenia.append({"row_index": idx, "text": text})
     return list(reversed(zyczenia))
   except Exception as e:
     print("Błąd pobierania:", e)
@@ -51,33 +43,22 @@ def ksiega():
     if row_to_delete:
       try:
         requests.post(
-            GOOGLE_SCRIPT_URL, json={"akcja": "usun", "row": row_to_delete}
+            GOOGLE_SCRIPT_URL,
+            json={"akcja": "usun", "row": row_to_delete},
+            timeout=10,
         )
       except Exception as e:
         print("Błąd usuwania:", e)
       return redirect("/ksiega")
 
     text = request.form.get("tekst")
-    file = request.files.get("zdjecie")
-
-    payload = {
-        "akcja": "dodaj",
-        "tekst": text,
-        "zdjecie_base64": "",
-        "nazwa": "",
-        "mimeType": "",
-    }
-    if file and file.filename != "":
-      file_bytes = file.read()
-      if len(file_bytes) < 4 * 1024 * 1024:
-        payload["zdjecie_base64"] = base64.b64encode(file_bytes).decode("utf-8")
-        payload["nazwa"] = secure_filename(file.filename)
-        payload["mimeType"] = file.content_type
-
-    try:
-      requests.post(GOOGLE_SCRIPT_URL, json=payload, timeout=15)
-    except Exception as e:
-      print("Błąd zapisu:", e)
+    if text:
+      try:
+        requests.post(
+            GOOGLE_SCRIPT_URL, json={"akcja": "dodaj", "tekst": text}, timeout=10
+        )
+      except Exception as e:
+        print("Błąd zapisu:", e)
 
     return redirect("/ksiega")
   return render_template_string(
@@ -98,11 +79,6 @@ def get_zdjecie():
 @app.route("/wideo")
 def get_wideo():
   return send_from_directory(".", "hailuo_1786178926.mp4..mp4")
-
-
-@app.route("/uploads/<filename>")
-def uploaded_file(filename):
-  return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 
 HTML_TEMPLATE = """
@@ -136,9 +112,8 @@ HTML_TEMPLATE = """
             <h1>Witaj!</h1>
         {% elif active_tab == 'ksiega' %}
             <h1>Księga Życzeń</h1>
-            <form method="POST" enctype="multipart/form-data">
+            <form method="POST">
                 <textarea name="tekst" required placeholder="Wpisz swoje życzenia..."></textarea><br>
-                <input type="file" name="zdjecie" accept="image/*" style="margin: 10px 0;"><br>
                 <button type="submit">Zapisz życzenia</button>
             </form>
             <h2>Wpisy gości:</h2>
@@ -149,13 +124,6 @@ HTML_TEMPLATE = """
                         <button type="submit" class="btn-usun" onclick="return confirm('Na pewno usunąć ten wpis?');">Usuń</button>
                     </form>
                     <p style="white-space: pre-wrap; margin-right: 50px;">{{ z.text }}</p>
-                    {% if z.img and z.img != "None" and z.img != "" %}
-                        {% if "." not in z.img %}
-                            <img src="https://lh3.googleusercontent.com/d/{{ z.img }}" style="max-width: 200px; display: block; margin-top: 10px; border-radius: 5px;">
-                        {% else %}
-                            <img src="/uploads/{{ z.img }}" style="max-width: 200px; display: block; margin-top: 10px; border-radius: 5px;">
-                        {% endif %}
-                    {% endif %}
                 </div>
             {% endfor %}
         {% elif active_tab == 'film' %}
