@@ -93,10 +93,7 @@ HTML_TEMPLATE = """
         .nav { display: flex; gap: 15px; margin-bottom: 25px; border-bottom: 2px solid #d0e1fd; padding-bottom: 10px; }
         .nav a { text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; background: #d0e1fd; color: #0056b3; }
         .nav a.active { background: #0056b3; color: white; }
-        
-        /* Zmienione na contain, dzięki czemu całe zdjęcie będzie widać i nic się nie uetnie */
         .solenizantka-img { width: 100%; max-height: 500px; object-fit: contain; display: block; margin: 0 auto 20px auto; border-radius: 10px; background: #f8fbff; }
-        
         .zyczenia-tekst { font-size: 22px; font-weight: bold; color: #0056b3; text-align: center; margin-top: 20px; line-height: 1.4; }
         textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #b8d4fd; border-radius: 8px; margin-bottom: 10px; }
         button { background: #0056b3; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
@@ -113,7 +110,7 @@ HTML_TEMPLATE = """
         </div>
         {% if active_tab == 'home' %}
             <img src="/zdjecie" class="solenizantka-img">
-            <div class="zyczenia-tekst">Betko! Z okazji Twoich Urodzin chcielibyśmy złożyć Ci najserdeczniejsze życzenia!</div>
+            <div class="zyczenia-tekst">Beatka! Z okazji Twoich Urodzin chcielibyśmy złożyć Ci najserdeczniejsze życzenia!</div>
         {% elif active_tab == 'ksiega' %}
             <h1>Księga Życzeń</h1>
             <form method="POST">
