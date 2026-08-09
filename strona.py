@@ -8,7 +8,6 @@ UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Wklej tutaj swój adres URL z Apps Script (z końcówką /exec)
 GOOGLE_SCRIPT_URL = "TUTAJ_WKLEJ_SWOJ_ADRES_URL_Z_EXEC"
 
 def load_zyczenia():
@@ -17,10 +16,13 @@ def load_zyczenia():
         response = requests.get(GOOGLE_SCRIPT_URL, timeout=10)
         if response.status_code == 200:
             dane = response.json()
-            # Pomijamy pierwszy wiersz (nagłówki)
+            # Przechodzimy przez każdy wiersz pomijając nagłówek (wiersz 0)
             for row in dane[1:]:
-                if row and len(row) > 0 and row[0]:
-                    zyczenia.append({"text": row[0], "img": row[1] if len(row) > 1 else None})
+                if row and len(row) > 0 and str(row[0]).strip() != "":
+                    text = str(row[0]).strip()
+                    # Sprawdzamy czy w kolumnie B jest zdjęcie, o ile ta kolumna istnieje w wierszu
+                    img = str(row[1]).strip() if len(row) > 1 and str(row[1]).strip() != "" else None
+                    zyczenia.append({"text": text, "img": img})
     except Exception as e:
         print("Błąd pobierania:", e)
     return list(reversed(zyczenia))
@@ -39,12 +41,12 @@ def ksiega():
             filename = secure_filename(file.filename)
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         
-        # Wysyłamy nowe życzenie do arkusza
         try:
-            requests.post(GOOGLE_SCRIPT_URL, json={"tekst": text, "zdjecie": filename})
-        except: pass
+            requests.post(GOOGLE_SCRIPT_URL, json={"tekst": text, "zdjecie": filename}, timeout=10)
+        except Exception as e:
+            print("Błąd zapisu:", e)
+            
         return redirect("/ksiega")
-    
     return render_template_string(HTML_TEMPLATE, active_tab="ksiega", zyczenia=load_zyczenia())
 
 @app.route("/film")
@@ -67,34 +69,45 @@ HTML_TEMPLATE = """
     <meta charset="utf-8">
     <title>Strona dla Solenizantki</title>
     <style>
-        body { font-family: sans-serif; background: #eef6ff; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 15px; }
-        .nav { display: flex; gap: 15px; margin-bottom: 25px; }
-        .nav a { padding: 10px 20px; border-radius: 8px; background: #d0e1fd; text-decoration: none; }
-        .wpis { background: #f4f8ff; padding: 15px; margin-bottom: 15px; border-left: 4px solid #0056b3; border-radius: 5px; }
+        body { font-family: sans-serif; background: #eef6ff; padding: 20px; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .nav { display: flex; gap: 15px; margin-bottom: 25px; border-bottom: 2px solid #d0e1fd; padding-bottom: 10px; }
+        .nav a { text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; background: #d0e1fd; color: #0056b3; }
+        .nav a.active { background: #0056b3; color: white; }
+        .solenizantka-img { width: 100%; max-height: 350px; object-fit: cover; border-radius: 10px; margin-bottom: 20px; }
+        textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #b8d4fd; border-radius: 8px; margin-bottom: 10px; }
+        button { background: #0056b3; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
+        .wpis { background: #f4f8ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #0056b3; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="nav">
-            <a href="/">Strona Główna</a>
-            <a href="/ksiega">Księga Życzeń</a>
-            <a href="/film">Film / Wideo</a>
+            <a href="/" class="{% if active_tab == 'home' %}active{% endif %}">Strona Główna</a>
+            <a href="/ksiega" class="{% if active_tab == 'ksiega' %}active{% endif %}">Księga Życzeń</a>
+            <a href="/film" class="{% if active_tab == 'film' %}active{% endif %}">Film / Wideo</a>
         </div>
-        {% if active_tab == 'ksiega' %}
+        {% if active_tab == 'home' %}
+            <img src="/zdjecie" class="solenizantka-img">
+            <h1>Witaj!</h1>
+        {% elif active_tab == 'ksiega' %}
             <h1>Księga Życzeń</h1>
             <form method="POST" enctype="multipart/form-data">
-                <textarea name="tekst" required style="width:100%; height:100px;"></textarea><br>
+                <textarea name="tekst" required></textarea><br>
                 <input type="file" name="zdjecie" accept="image/*"><br>
                 <button type="submit">Zapisz życzenia</button>
             </form>
             <h2>Wpisy gości:</h2>
             {% for z in zyczenia %}
                 <div class="wpis">
-                    <p>{{ z.text }}</p>
-                    {% if z.img and z.img != "None" %}<img src="/uploads/{{ z.img }}" style="max-width:150px;">{% endif %}
+                    <p style="white-space: pre-wrap;">{{ z.text }}</p>
+                    {% if z.img and z.img != "None" and z.img != "" %}
+                        <img src="/uploads/{{ z.img }}" style="max-width: 200px; display: block; margin-top: 10px; border-radius: 5px;">
+                    {% endif %}
                 </div>
             {% endfor %}
+        {% elif active_tab == 'film' %}
+            <video width="100%" controls><source src="/wideo" type="video/mp4"></video>
         {% endif %}
     </div>
 </body>
