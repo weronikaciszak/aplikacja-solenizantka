@@ -110,7 +110,7 @@ HTML_TEMPLATE = """
         </div>
         {% if active_tab == 'home' %}
             <img src="/zdjecie" class="solenizantka-img">
-            <div class="zyczenia-tekst">Beatka! Z okazji Twoich Urodzin chcielibyśmy złożyć Ci najserdeczniejsze życzenia!</div>
+            <div class="zyczenia-tekst">Beatko! Z okazji Twoich Urodzin chcielibyśmy złożyć Ci najserdeczniejsze życzenia!</div>
         {% elif active_tab == 'ksiega' %}
             <h1>Księga Życzeń</h1>
             <form method="POST">
