@@ -23,7 +23,8 @@ def load_zyczenia():
     response = requests.get(GOOGLE_SCRIPT_URL, timeout=10)
     dane = response.json()
     zyczenia = []
-    for row in dane[1:]:
+    # Zakładamy, że wiersz to [tekst, img, id/akcja] lub po prostu [tekst, img]
+    for idx, row in enumerate(dane[1:], start=1):
       if row and len(row) > 0 and str(row[0]).strip() != "":
         text = str(row[0]).strip()
         img = (
@@ -31,12 +32,9 @@ def load_zyczenia():
             if len(row) > 1 and str(row[1]).strip() != ""
             else None
         )
-        zyczenia.append({"text": text, "img": img})
+        zyczenia.append({"row_index": idx, "text": text, "img": img})
 
-    wynik = []
-    for idx, z in enumerate(reversed(zyczenia)):
-      wynik.append({"id": idx, "text": z["text"], "img": z["img"]})
-    return wynik
+    return list(reversed(zyczenia))
   except Exception as e:
     print("Błąd pobierania:", e)
     return []
@@ -50,25 +48,39 @@ def home():
 @app.route("/ksiega", methods=["GET", "POST"])
 def ksiega():
   if request.method == "POST":
+    # Obsługa usuwania wpisu
+    row_to_delete = request.form.get("usun_row")
+    if row_to_delete:
+      try:
+        requests.post(
+            GOOGLE_SCRIPT_URL, json={"akcja": "usun", "row": row_to_delete}
+        )
+      except Exception as e:
+        print("Błąd usuwania:", e)
+      return redirect("/ksiega")
+
+    # Obsługa dodawania nowego wpisu
     text = request.form.get("tekst")
     file = request.files.get("zdjecie")
 
-    payload = {"tekst": text, "zdjecie_base64": "", "nazwa": "", "mimeType": ""}
+    payload = {
+        "akcja": "dodaj",
+        "tekst": text,
+        "zdjecie_base64": "",
+        "nazwa": "",
+        "mimeType": "",
+    }
     if file and file.filename != "":
       file_bytes = file.read()
-      # Sprawdzenie czy plik nie jest za duży (np. powyżej 4 MB)
       if len(file_bytes) < 4 * 1024 * 1024:
         payload["zdjecie_base64"] = base64.b64encode(file_bytes).decode("utf-8")
         payload["nazwa"] = secure_filename(file.filename)
         payload["mimeType"] = file.content_type
-      else:
-        print("Plik jest za duży!")
 
     try:
-      r = requests.post(GOOGLE_SCRIPT_URL, json=payload, timeout=15)
-      print("Odpowiedź Google Script:", r.text)
+      requests.post(GOOGLE_SCRIPT_URL, json=payload, timeout=15)
     except Exception as e:
-      print("Błąd zapisu do Google:", e)
+      print("Błąd zapisu:", e)
 
     return redirect("/ksiega")
   return render_template_string(
@@ -111,7 +123,8 @@ HTML_TEMPLATE = """
         .solenizantka-img { width: 100%; max-height: 350px; object-fit: cover; border-radius: 10px; margin-bottom: 20px; }
         textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #b8d4fd; border-radius: 8px; margin-bottom: 10px; }
         button { background: #0056b3; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
-        .wpis { background: #f4f8ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #0056b3; }
+        .wpis { background: #f4f8ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #0056b3; position: relative; }
+        .btn-usun { background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 5px; font-size: 12px; cursor: pointer; float: right; }
     </style>
 </head>
 <body>
@@ -128,21 +141,22 @@ HTML_TEMPLATE = """
             <h1>Księga Życzeń</h1>
             <form method="POST" enctype="multipart/form-data">
                 <textarea name="tekst" required placeholder="Wpisz swoje życzenia..."></textarea><br>
-                <label>Dodaj zdjęcie (opcjonalnie):</label><br>
                 <input type="file" name="zdjecie" accept="image/*" style="margin: 10px 0;"><br>
                 <button type="submit">Zapisz życzenia</button>
             </form>
             <h2>Wpisy gości:</h2>
             {% for z in zyczenia %}
                 <div class="wpis">
-                    <p style="white-space: pre-wrap;">{{ z.text }}</p>
+                    <form method="POST" style="display:inline;">
+                        <input type="hidden" name="usun_row" value="{{ z.row_index }}">
+                        <button type="submit" class="btn-usun" onclick="return confirm('Na pewno usunąć ten wpis?');">Usuń</button>
+                    </form>
+                    <p style="white-space: pre-wrap; margin-right: 50px;">{{ z.text }}</p>
                     {% if z.img and z.img != "None" and z.img != "" %}
-                        {# Jeśli w kolumnie B jest ID z Dysku Google (nie zawiera rozszerzenia pliku) #}
                         {% if "." not in z.img %}
-                            <img src="https://lh3.googleusercontent.com/d/{{ z.img }}" style="max-width: 250px; display: block; margin-top: 10px; border-radius: 5px;">
+                            <img src="https://lh3.googleusercontent.com/d/{{ z.img }}" style="max-width: 200px; display: block; margin-top: 10px; border-radius: 5px;">
                         {% else %}
-                            <!-- Stary wpis ze starym plikiem -->
-                            <p style="font-size: 12px; color: gray;">[Zdjęcie niedostępne - stary format]</p>
+                            <img src="/uploads/{{ z.img }}" style="max-width: 200px; display: block; margin-top: 10px; border-radius: 5px;">
                         {% endif %}
                     {% endif %}
                 </div>
