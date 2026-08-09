@@ -1,7 +1,8 @@
 import os
-import requests
 from flask import Flask, redirect, render_template_string, request, send_from_directory
 from werkzeug.utils import secure_filename
+import gspread
+from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
@@ -9,55 +10,69 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 FILENAME = "zyczenia.txt"
 
-GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL")
+# Konfiguracja Arkusza Google (klucz.json i Twoje ID)
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+CREDS_FILE = "klucz.json"
+ID_ARKUSZA = "17nNSTdy_R6p2rwsJ-vEKQ5RF1L2OOSANnoi8XflH5KQ"
+
+def get_sheet():
+    """Funkcja łącząca się z Arkuszem Google za pomocą pliku klucz.json"""
+    if os.path.exists(CREDS_FILE):
+        try:
+            creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
+            client = gspread.authorize(creds)
+            return client.open_by_key(ID_ARKUSZA).sheet1
+        except Exception as e:
+            print("Błąd połączenia z arkuszem:", e)
+    return None
 
 def zapisz_zyczenie(tekst, zdjecie):
-    # Zapisz lokalnie do pliku
+    # 1. Zapisz lokalnie do pliku txt
     with open(FILENAME, "a", encoding="utf-8") as f:
         f.write(f"{tekst}|||{zdjecie or ''}\n")
     
-    # Wyślij do Arkusza Google
-    if GOOGLE_SCRIPT_URL:
+    # 2. Zapisz do Arkusza Google
+    sheet = get_sheet()
+    if sheet:
         try:
-            requests.post(GOOGLE_SCRIPT_URL, json={"tekst": tekst, "zdjecie": zdjecie or ""}, timeout=5)
+            sheet.append_row([tekst, zdjecie or ""])
         except Exception as e:
-            print("Błąd wysyłania do arkusza:", e)
+            print("Błąd zapisu do arkusza:", e)
 
 def load_zyczenia():
     zyczenia_zbior = []
     
-    # 1. Pobieramy z pliku lokalnego
+    # 1. Pobieranie z pliku tekstowego zyczenia.txt
     if os.path.exists(FILENAME):
         try:
             with open(FILENAME, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            for line in lines:
-                parts = line.strip().split("|||")
-                if parts and parts[0]:
-                    text = parts[0]
-                    img = parts[1] if len(parts) > 1 and parts[1] != "" else None
-                    zyczenia_zbior.append({"text": text, "img": img})
+                for line in f:
+                    parts = line.strip().split("|||")
+                    if parts and parts[0]:
+                        text = parts[0]
+                        img = parts[1] if len(parts) > 1 and parts[1] != "" else None
+                        zyczenia_zbior.append({"text": text, "img": img})
         except Exception as e:
             print("Błąd odczytu pliku:", e)
             
-    # 2. Pobieramy z Arkusza Google (chmura)
-    if GOOGLE_SCRIPT_URL:
+    # 2. Pobieranie bezpośrednio z Arkusza Google
+    sheet = get_sheet()
+    if sheet:
         try:
-            response = requests.get(GOOGLE_SCRIPT_URL, timeout=5)
-            if response.status_code == 200:
-                dane = response.json()
-                for row in dane:
-                    if row and len(row) > 0 and row[0]:
-                        text = str(row[0])
-                        img = str(row[1]) if len(row) > 1 and row[1] != "" and row[1] is not None else None
-                        wpis = {"text": text, "img": img}
-                        # Dodajemy tylko jeśli jeszcze tego nie ma, żeby nie było duplikatów
-                        if wpis not in zyczenia_zbior:
-                            zyczenia_zbior.append(wpis)
+            records = sheet.get_all_values()
+            # Pomijamy nagłówek (pierwszy wiersz) i czytamy resztę
+            for row in records[1:]:
+                if row and len(row) > 0 and row[0].strip() != "":
+                    text = row[0]
+                    img = row[1] if len(row) > 1 and row[1].strip() != "" else None
+                    wpis = {"text": text, "img": img}
+                    # Dodaj tylko jeśli jeszcze tego nie ma (unikamy duplikatów)
+                    if wpis not in zyczenia_zbior:
+                        zyczenia_zbior.append(wpis)
         except Exception as e:
             print("Błąd pobierania z arkusza:", e)
             
-    # Odwracamy kolejność, żeby najnowsze były na górze, i nadajemy indeksy do usuwania
+    # Odwracamy kolejność, żeby najnowsze były na górze, i nadajemy ID do usuwania
     wynik = []
     for idx, z in enumerate(reversed(zyczenia_zbior)):
         wynik.append({"id": idx, "text": z["text"], "img": z["img"]})
