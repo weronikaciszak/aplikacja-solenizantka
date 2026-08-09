@@ -12,24 +12,56 @@ FILENAME = "zyczenia.txt"
 GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL")
 
 def zapisz_zyczenie(tekst, zdjecie):
+    # Zapisz lokalnie do pliku
+    with open(FILENAME, "a", encoding="utf-8") as f:
+        f.write(f"{tekst}|||{zdjecie or ''}\n")
+    
+    # Wyślij do Arkusza Google
     if GOOGLE_SCRIPT_URL:
         try:
-            requests.post(GOOGLE_SCRIPT_URL, json={"tekst": tekst, "zdjecie": zdjecie or ""})
+            requests.post(GOOGLE_SCRIPT_URL, json={"tekst": tekst, "zdjecie": zdjecie or ""}, timeout=5)
         except Exception as e:
             print("Błąd wysyłania do arkusza:", e)
 
 def load_zyczenia():
-    if not os.path.exists(FILENAME):
-        return []
-    with open(FILENAME, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-    zyczenia = []
-    for idx, line in enumerate(lines):
-        parts = line.strip().split("|||")
-        text = parts[0] if len(parts) > 0 else ""
-        img = parts[1] if len(parts) > 1 and parts[1] != "" else None
-        zyczenia.append({"id": idx, "text": text, "img": img})
-    return list(reversed(zyczenia))
+    zyczenia_zbior = []
+    
+    # 1. Pobieramy z pliku lokalnego
+    if os.path.exists(FILENAME):
+        try:
+            with open(FILENAME, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            for line in lines:
+                parts = line.strip().split("|||")
+                if parts and parts[0]:
+                    text = parts[0]
+                    img = parts[1] if len(parts) > 1 and parts[1] != "" else None
+                    zyczenia_zbior.append({"text": text, "img": img})
+        except Exception as e:
+            print("Błąd odczytu pliku:", e)
+            
+    # 2. Pobieramy z Arkusza Google (chmura)
+    if GOOGLE_SCRIPT_URL:
+        try:
+            response = requests.get(GOOGLE_SCRIPT_URL, timeout=5)
+            if response.status_code == 200:
+                dane = response.json()
+                for row in dane:
+                    if row and len(row) > 0 and row[0]:
+                        text = str(row[0])
+                        img = str(row[1]) if len(row) > 1 and row[1] != "" and row[1] is not None else None
+                        wpis = {"text": text, "img": img}
+                        # Dodajemy tylko jeśli jeszcze tego nie ma, żeby nie było duplikatów
+                        if wpis not in zyczenia_zbior:
+                            zyczenia_zbior.append(wpis)
+        except Exception as e:
+            print("Błąd pobierania z arkusza:", e)
+            
+    # Odwracamy kolejność, żeby najnowsze były na górze, i nadajemy indeksy do usuwania
+    wynik = []
+    for idx, z in enumerate(reversed(zyczenia_zbior)):
+        wynik.append({"id": idx, "text": z["text"], "img": z["img"]})
+    return wynik
 
 @app.route("/")
 def home():
@@ -45,10 +77,7 @@ def ksiega():
             filename = secure_filename(file.filename)
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         
-        with open(FILENAME, "a", encoding="utf-8") as f:
-            f.write(f"{text}|||{filename or ''}\n")
-        
-        zapisz_zyczenie(text, filename or "")
+        zapisz_zyczenie(text, filename)
         return redirect("/ksiega")
     return render_template_string(HTML_TEMPLATE, active_tab="ksiega", zyczenia=load_zyczenia())
 
